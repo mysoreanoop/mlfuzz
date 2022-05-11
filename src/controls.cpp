@@ -11,46 +11,59 @@
 #include <uhdm/uhdm.h>
 #include <uhdm/vpi_listener.h>
 
+//TODO ignore params only condition-expressions (constants only is done)
+//TODO skip if/if-else conditions which have purely system func call statements in them
+//TODO indent the prints according to node depths
+//FIXME for loops without a generate keyword randomly breaking; bsg_mem/bsg_mem_1rw_sync_mask_write_bit_synth.v
+
 // functions declarations
 std::string visitbit_sel(vpiHandle);
 std::string visithier_path(vpiHandle);
 std::string visitindexed_part_sel(vpiHandle);
 std::string visitpart_sel(vpiHandle);
-
 std::list <std::string> visitCond(vpiHandle);
 std::list <std::string> visitLeaf(vpiHandle);
 std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle);
-
-int evalOperation(vpiHandle);
-int evalLeaf(vpiHandle);
-
 void findTernaryInOperation(vpiHandle);
 void visitAssignment(vpiHandle);
 void visitBlocks(vpiHandle);
 void visitTernary(vpiHandle);
 void visitTopModules(vpiHandle);
 
-//TODO ignore params only condition-expressions (constants only is done)
-//TODO skip if/if-else conditions which have purely system func call statements in them
-//TODO indent the prints according to node depths
-//TODO for loops without a generate keyword randomly breaking; bsg_mem/bsg_mem_1rw_sync_mask_write_bit_synth.v
+int evalOperation(vpiHandle);
+int evalLeaf(vpiHandle);
 
 // global variables
-bool saveVariables = false;
+bool saveVariables = false; 
 bool saveSubex = false;
+bool expand = true;
 
+// struct defines
+// keeps track current conditional block's condition expr for iterative inserts
+struct currentCond_s {
+  bool v;
+  std::string cond;
+} currentCond = {false, ""};
+
+// discovered variables
 struct vars {
-  int width[4]; //TODO use malloc
-  int dims;
+  int width[4]; //TODO use malloc (currently upto 4 dims)
+  int dims; // for multi dimension arrays
   std::string name;
-  std::string type;
+  std::string type; //reg/wire
 };
 
-std::list <vars> nets, netsCurrent;
-std::list <std::string> all, ternaries, cases, ifs;
-std::list <int> nAll, nTernaries, nCases, nIfs, nSubexpressions;
-std::map <std::string, int> paramsAll, params;
+// global data structures
+std::list <vars> nets, netsCurrent; // for storing nets discovered
+std::list <std::string> all, ternaries, cases, ifs; // for storing specific control expressions (see definition in main README.md)
+std::list <int> nAll, nTernaries, nCases, nIfs, nSubexpressions; // numbers for quick print debug
+std::map <std::string, int> paramsAll, params; // for params, needed for supplanting in expressions expansions
 
+//std::multimap <std::string, std::string> statements;
+//std::multimap <std::string, vpiHandle> handles;
+
+// ancillary functions
+// prints out discovered control expressions to file or stdout
 void print_list(std::list<std::string> &list, bool f = false, std::string fileName = "", bool std = false) {
     std::ofstream file;
     file.open(fileName, std::ios_base::app);
@@ -64,8 +77,13 @@ void print_list(std::list<std::string> &list, bool f = false, std::string fileNa
     return;
 }
 
+//TODO prints debug info depending on DEBUG set or not
+
+// visitor functions for different node types
+
 std::string visitref_obj(vpiHandle h) {
   std::string out = "";
+  //TODO version change!!
   //if(const char *s = vpi_get_str(vpiFullName, h))
   //  std::cout << "Name before everything: " << s << std::endl;
   //else if(const char *s = vpi_get_str(vpiName, h))
@@ -90,6 +108,7 @@ std::string visitref_obj(vpiHandle h) {
       case UHDM::uhdmparameter : 
         out = (visitLeaf(actual)).front();
         break;
+      //TODO redundant??
       //{
       //  std::cout << "Parameter\n";
       //  s_vpi_value value;
@@ -422,6 +441,7 @@ int search_width(vpiHandle h) {
 }
 
 
+//TODO -- add various other operations support
 std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
   vpiHandle ops = vpi_iterate(vpiOperand, h);
   std::list <std::string> current;
@@ -431,6 +451,7 @@ std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
 
   if(!saveVariables) {
     std::list <std::string> variables;
+    std::cout << "Handle type: " << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)(vpi_get(vpiType, h))) << "(" << std::to_string(vpi_get(vpiType, h)) << ")" << std::endl;
     const int type = vpi_get(vpiOpType, h);
     std::cout << "Operation type: " << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)type) << "(" << std::to_string(type) << ")" << std::endl;
     std::string symbol = "";
@@ -472,6 +493,7 @@ std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
       default : symbol += " UNKNOWN_OP(" + std::to_string(type) + ") " ; break;
     }
 
+    std::cout << "Found symbol\n";
     if(ops) {
       int opCnt = 0;
       //opening operand, if any
@@ -633,6 +655,10 @@ std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
 }
 
 std::list <std::string> visitCond(vpiHandle h) {
+  //TODO
+  // when the condition is a ref_obj or a hier_path, expand it.
+  // When the condition is an operation, pass an int argument to expand operations
+
   std::cout << "Walking condition; type: " << 
     UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((const uhdm_handle *)h)->type) << std::endl;
   std::list <std::string> current;
@@ -644,6 +670,14 @@ std::list <std::string> visitCond(vpiHandle h) {
     case UHDM::uhdmexpr :
       std::cout << "Leafs found\n";
       current = visitLeaf(h);
+     // if(expand) {
+     //   std::list <vpiHandle> exp = handles.get(current);
+     //   std::cout << "Expanding " << current << std::endl;
+     //   bool k;
+     //   std::list <std::string> l;
+     //   std::tie(k, l) = visitOperation(exp.first()); //TODO add depth param
+     //   current = l.first();
+     // }
       break;
     case UHDM::uhdmhier_path :
       std::cout << "Struct found\n";
@@ -716,32 +750,48 @@ void visitCase(vpiHandle h) {
 
 void visitAssignment(vpiHandle h) {
   std::cout << "Walking assignment\n";
-  if(vpiHandle rhs = vpi_handle(vpiRhs, h)) {
-    if(((uhdm_handle *)rhs)->type == UHDM::uhdmoperation) {
-      std::cout << "Operation found in RHS\n";
-      const int n = vpi_get(vpiOpType, rhs);
-      if (n == 32) {
-        visitTernary(rhs);
-      }
-      else {
-        if(vpiHandle operands = vpi_iterate(vpiOperand, rhs)) {
-          while(vpiHandle operand = vpi_scan(operands)) {
-            std::cout << "Operand type: "
-              << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((uhdm_handle *)operand)->type) << std::endl;
-            if(((uhdm_handle *)operand)->type == UHDM::uhdmoperation) {
-              std::cout << "\nOperand is operation; checking if ternary\n";
-              findTernaryInOperation(operand);
-              vpi_release_handle(operand);
-            }
+  vpiHandle rhs = vpi_handle(vpiRhs, h);
+  if(((uhdm_handle *)rhs)->type == UHDM::uhdmoperation) {
+    std::cout << "Operation found in RHS\n";
+    const int n = vpi_get(vpiOpType, rhs);
+    if (n == 32) {
+      visitTernary(rhs);
+    }
+    else {
+      if(vpiHandle operands = vpi_iterate(vpiOperand, rhs)) {
+        while(vpiHandle operand = vpi_scan(operands)) {
+          std::cout << "Operand type: "
+            << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((uhdm_handle *)operand)->type) << std::endl;
+          if(((uhdm_handle *)operand)->type == UHDM::uhdmoperation) {
+            std::cout << "\nOperand is operation; checking if ternary\n";
+            findTernaryInOperation(operand);
+            vpi_release_handle(operand);
           }
-          vpi_release_handle(operands);
         }
+        vpi_release_handle(operands);
       }
-    } else
-      std::cout << "Not an operation on the RHS; ignoring\n";
-    vpi_release_handle(rhs);
+    }
+
+    if(vpiHandle lhs = vpi_handle(vpiLhs, h)) {
+      //TODO save rhs to multimap, along with current condition
+      std::string l = vpi_get_str(vpiFullName, lhs);
+      // to start with, if there are multiple assignments 
+      // likely from always_comb blocks,
+      // we'll skip expanding it
+                                                                
+      // later, when stable, we can chime in conditions as well
+      bool k;
+      std::list<std::string> r;
+      std::tie(k, r) = visitOperation(rhs);
+      std::cout << "LHS: " << l << std::endl;
+      std::cout << "RHS: " << r.front() << std::endl;
+      //handles.insert({l, rhs});
+      //statements.insert({l, r.front()}); //no over-write
+    }
+
   } else
-    std::cerr << "Assignment without RHS handle\n";
+    std::cout << "Not an operation on the RHS; ignoring\n";
+  
   return;
 }
 
@@ -945,7 +995,7 @@ int evalOperation(vpiHandle h) {
     std::cerr << "Couldn't iterate on operands\n";
 
   const int type = vpi_get(vpiOpType, h);
-  std::cout << "Operation type: " << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)type) << "(" << std::to_string(type) << ")" << std::endl;
+  std::cout << "Operation type in eval: " << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)type) << "(" << std::to_string(type) << ")" << std::endl;
   switch(type) {
     case 11 : return ops[0] - ops[1];
     case 12 : return ops[0] / ops[1];
@@ -956,7 +1006,7 @@ int evalOperation(vpiHandle h) {
     case 25 : return ops[0] * ops[1];
     default : return 0;
   }
-
+  std::cout << "Done evaluating operation\n";
   return 0;
 }
 
@@ -1127,6 +1177,15 @@ void visitTopModules(vpiHandle ti) {
 
         // Params
         std::cout << "****************************************\n";
+        std::cout << "      ***  Now finding ports         ***\n";
+        std::cout << "****************************************\n";
+        if(vpiHandle ports = vpi_iterate(vpiPorts, mh)) {
+          std::cout << "Found ports\n";
+          visitVariables(ports);
+        } else std::cout << "No ports found in current module\n";
+        std::cout << "Done with ports\n";
+
+        std::cout << "****************************************\n";
         std::cout << "      ***  Now finding params        ***\n";
         std::cout << "****************************************\n";
         //TODO for loops, labelled begins, begins, genscopes, and other elements also have vpiParamAssigns!!
@@ -1191,11 +1250,32 @@ void visitTopModules(vpiHandle ti) {
           vpi_release_handle(ai);
         } else std::cout << "No always blocks in current module\n";
 
+        //Upgrade control variables to expressions where possible
+        /* TODO control_var_to_exp
+          Before, when dealing with ternary expressions in statements within a condition body,
+            we just used to record the ternary condition;
+            When decomposed into variables, they are kinda repetitive and so, won't increase complexity by much
+          Now, we record both the enclosing condition (which is updated on encountering a nested expression)
+            and the ternary condition.
+          Also record LHS of all continuous assignments with the conditions they are nested within.
+          For all control signals recovered (without bit/part select)
+                in current module instance, 
+            - get continuous assignment definitions
+            - get continuous assignment definitions again, recurse
+            - stop if or when 
+              - depth = 5
+              - reach port def
+              - reach procedural assignment
+              
+        */
+
         //Accumulate variables:
         nets.insert(nets.end(), netsCurrent.begin(), netsCurrent.end());
         netsCurrent.clear();
         paramsAll.insert(params.begin(), params.end());
         params.clear();
+        //statements.clear();
+        //handles.clear();
 
         //Statistics:
         static int numTernaries, numIfs, numCases;
