@@ -11,56 +11,59 @@
 #include <uhdm/uhdm.h>
 #include <uhdm/vpi_listener.h>
 
+//TODO ignore params only condition-expressions (constants only is done)
+//TODO skip if/if-else conditions which have purely system func call statements in them
+//TODO indent the prints according to node depths
+//FIXME for loops without a generate keyword randomly breaking; bsg_mem/bsg_mem_1rw_sync_mask_write_bit_synth.v
+
 // functions declarations
 std::string visitbit_sel(vpiHandle);
 std::string visithier_path(vpiHandle);
 std::string visitindexed_part_sel(vpiHandle);
 std::string visitpart_sel(vpiHandle);
-
 std::list <std::string> visitCond(vpiHandle);
 std::list <std::string> visitLeaf(vpiHandle);
 std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle);
-
-int evalOperation(vpiHandle);
-int evalLeaf(vpiHandle);
-
 void findTernaryInOperation(vpiHandle);
 void visitAssignment(vpiHandle);
 void visitBlocks(vpiHandle);
 void visitTernary(vpiHandle);
 void visitTopModules(vpiHandle);
 
-//TODO ignore params only condition-expressions (constants only is done)
-//TODO skip if/if-else conditions which have purely system func call statements in them
-//TODO indent the prints according to node depths
-//TODO for loops without a generate keyword randomly breaking; bsg_mem/bsg_mem_1rw_sync_mask_write_bit_synth.v
+int evalOperation(vpiHandle);
+int evalLeaf(vpiHandle);
 
 // global variables
-bool saveVariables = false;
+bool saveVariables = false; 
 bool saveSubex = false;
 bool expand = true;
 
-// keeps track current conditional block's condition expr
+// struct defines
+// keeps track current conditional block's condition expr for iterative inserts
 struct currentCond_s {
   bool v;
   std::string cond;
 } currentCond = {false, ""};
 
+// discovered variables
 struct vars {
-  int width[4]; //TODO use malloc
-  int dims;
+  int width[4]; //TODO use malloc (currently upto 4 dims)
+  int dims; // for multi dimension arrays
   std::string name;
-  std::string type;
+  std::string type; //reg/wire
 };
 
-std::list <vars> nets, netsCurrent;
-std::list <std::string> all, ternaries, cases, ifs;
-std::list <int> nAll, nTernaries, nCases, nIfs, nSubexpressions;
-std::map <std::string, int> paramsAll, params;
+// global data structures
+std::list <vars> nets, netsCurrent; // for storing nets discovered
+std::list <std::string> all, ternaries, cases, ifs; // for storing specific control expressions (see definition in main README.md)
+std::list <int> nAll, nTernaries, nCases, nIfs, nSubexpressions; // numbers for quick print debug
+std::map <std::string, int> paramsAll, params; // for params, needed for supplanting in expressions expansions
 
-std::multimap <std::string, std::string> statements;
-std::multimap <std::string, vpiHandle> handles;
+//std::multimap <std::string, std::string> statements;
+//std::multimap <std::string, vpiHandle> handles;
 
+// ancillary functions
+// prints out discovered control expressions to file or stdout
 void print_list(std::list<std::string> &list, bool f = false, std::string fileName = "", bool std = false) {
     std::ofstream file;
     file.open(fileName, std::ios_base::app);
@@ -74,8 +77,13 @@ void print_list(std::list<std::string> &list, bool f = false, std::string fileNa
     return;
 }
 
+//TODO prints debug info depending on DEBUG set or not
+
+// visitor functions for different node types
+
 std::string visitref_obj(vpiHandle h) {
   std::string out = "";
+  //TODO version change!!
   //if(const char *s = vpi_get_str(vpiFullName, h))
   //  std::cout << "Name before everything: " << s << std::endl;
   //else if(const char *s = vpi_get_str(vpiName, h))
@@ -100,6 +108,7 @@ std::string visitref_obj(vpiHandle h) {
       case UHDM::uhdmparameter : 
         out = (visitLeaf(actual)).front();
         break;
+      //TODO redundant??
       //{
       //  std::cout << "Parameter\n";
       //  s_vpi_value value;
@@ -661,14 +670,14 @@ std::list <std::string> visitCond(vpiHandle h) {
     case UHDM::uhdmexpr :
       std::cout << "Leafs found\n";
       current = visitLeaf(h);
-      if(expand) {
-        std::list <vpiHandle> exp = handles.get(current);
-        std::cout << "Expanding " << current << std::endl;
-        bool k;
-        std::list <std::string> l;
-        std::tie(k, l) = visitOperation(exp.first()); //TODO add depth param
-        current = l.first();
-      }
+     // if(expand) {
+     //   std::list <vpiHandle> exp = handles.get(current);
+     //   std::cout << "Expanding " << current << std::endl;
+     //   bool k;
+     //   std::list <std::string> l;
+     //   std::tie(k, l) = visitOperation(exp.first()); //TODO add depth param
+     //   current = l.first();
+     // }
       break;
     case UHDM::uhdmhier_path :
       std::cout << "Struct found\n";
@@ -776,7 +785,7 @@ void visitAssignment(vpiHandle h) {
       std::tie(k, r) = visitOperation(rhs);
       std::cout << "LHS: " << l << std::endl;
       std::cout << "RHS: " << r.front() << std::endl;
-      handles.insert({l, rhs});
+      //handles.insert({l, rhs});
       //statements.insert({l, r.front()}); //no over-write
     }
 
@@ -1242,7 +1251,7 @@ void visitTopModules(vpiHandle ti) {
         } else std::cout << "No always blocks in current module\n";
 
         //Upgrade control variables to expressions where possible
-        /* TODO
+        /* TODO control_var_to_exp
           Before, when dealing with ternary expressions in statements within a condition body,
             we just used to record the ternary condition;
             When decomposed into variables, they are kinda repetitive and so, won't increase complexity by much
@@ -1265,8 +1274,8 @@ void visitTopModules(vpiHandle ti) {
         netsCurrent.clear();
         paramsAll.insert(params.begin(), params.end());
         params.clear();
-        statements.clear();
-        handles.clear();
+        //statements.clear();
+        //handles.clear();
 
         //Statistics:
         static int numTernaries, numIfs, numCases;
