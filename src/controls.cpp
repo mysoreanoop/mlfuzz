@@ -301,7 +301,6 @@ std::list <std::string> visitLeaf(vpiHandle h) {
       break;
     }
     case UHDM::uhdmhier_path : { 
-      //XXX redundant (Actually not!!)
       std::string tmp = visithier_path(h);
       std::cout << "Struct at leaf: " << tmp << std::endl;
       out.push_back(tmp);
@@ -951,7 +950,6 @@ int evalLeaf(vpiHandle h) {
       if(it == params.end()) {
         std::cout << "UNKNOWN_PARAM\n";
         return 0;
-        //TODO catch this!
       } else return it->second;
       break;
     }
@@ -967,7 +965,7 @@ int evalLeaf(vpiHandle h) {
 }
 
 int evalOperation(vpiHandle h) {
-  //There are 7 evaluatable operations we support given below;
+  //Some supported evaluatable operations we support
   //TODO what about functions like clog2? Handled by preprocessor?
   int ops[2];
   int *op = ops;
@@ -1048,7 +1046,7 @@ void visitVariables(vpiHandle i) {
     std::string out = "";
     switch(((const uhdm_handle *)h)->type) {
       case UHDM::uhdmstruct_var :
-      case UHDM::uhdmstruct_net : {//TODO difference?
+      case UHDM::uhdmstruct_net : {//TODO quote difference
         std::cout << "Finding width of struct\n";
         std::string base = vpi_get_str(vpiFullName, h);
         if(vpiHandle ts = vpi_handle(vpiTypespec, h)) {
@@ -1188,7 +1186,7 @@ void visitTopModules(vpiHandle ti) {
         std::cout << "****************************************\n";
         std::cout << "      ***  Now finding params        ***\n";
         std::cout << "****************************************\n";
-        //TODO for loops, labelled begins, begins, genscopes, and other elements also have vpiParamAssigns!!
+        //TODO for-loops, labelled begins, begins, genscopes, and other elements also have vpiParamAssigns!!
         //TODO BSG_SAFE_CLOG2 and suchlike
         if(vpiHandle pi = vpi_iterate(vpiParamAssign, mh)) { //do vpiParameter
           std::cout << "Found params\n";
@@ -1250,11 +1248,11 @@ void visitTopModules(vpiHandle ti) {
           vpi_release_handle(ai);
         } else std::cout << "No always blocks in current module\n";
 
-        //Upgrade control variables to expressions where possible
-        /* TODO control_var_to_exp
+        //Upgrade control variables to expressions where possible when requested
+        /* TODO cv2ce: Control vars to expressions
           Before, when dealing with ternary expressions in statements within a condition body,
-            we just used to record the ternary condition;
-            When decomposed into variables, they are kinda repetitive and so, won't increase complexity by much
+            we used to record only the ternary condition;
+            When decomposed into variables, they are repetitive and so, won't increase complexity by much
           Now, we record both the enclosing condition (which is updated on encountering a nested expression)
             and the ternary condition.
           Also record LHS of all continuous assignments with the conditions they are nested within.
@@ -1415,7 +1413,7 @@ int main(int argc, const char** argv) {
   print_list(ifs, true, "sigsFromIfStmts");
   std::cout << "\n\n\n*** Printing ternary conditions ***\n\n\n";
   print_list(ternaries, true, "sigsFromTerns");
-  std::cout << "\n\n\n*** Printing variables ***\n\n\n"; //why?
+  std::cout << "\n\n\n*** Printing variables ***\n\n\n";
   std::ofstream file;
   file.open("nets", std::ios_base::app);
   for (auto const &i: nets) {
