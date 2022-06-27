@@ -11,11 +11,6 @@
 #include <uhdm/uhdm.h>
 #include <uhdm/vpi_listener.h>
 
-//TODO ignore params only condition-expressions (constants only is done)
-//TODO skip if/if-else conditions which have purely system func call statements in them
-//TODO indent the prints according to node depths
-//FIXME for loops without a generate keyword randomly breaking; bsg_mem/bsg_mem_1rw_sync_mask_write_bit_synth.v
-
 // functions declarations
 std::string visitbit_sel(vpiHandle);
 std::string visithier_path(vpiHandle);
@@ -47,7 +42,7 @@ struct currentCond_s {
 
 // discovered variables
 struct vars {
-  int width[4]; //TODO use malloc (currently upto 4 dims)
+  int width[4]; //malloc will be slower, expensive; supports upto 4 dimensional arrays
   int dims; // for multi dimension arrays
   std::string name;
   std::string type; //reg/wire
@@ -58,9 +53,6 @@ std::list <vars> nets, netsCurrent; // for storing nets discovered
 std::list <std::string> all, ternaries, cases, ifs; // for storing specific control expressions (see definition in main README.md)
 std::list <int> nAll, nTernaries, nCases, nIfs, nSubexpressions; // numbers for quick print debug
 std::map <std::string, int> paramsAll, params; // for params, needed for supplanting in expressions expansions
-
-//std::multimap <std::string, std::string> statements;
-//std::multimap <std::string, vpiHandle> handles;
 
 // ancillary functions
 // prints out discovered control expressions to file or stdout
@@ -77,30 +69,10 @@ void print_list(std::list<std::string> &list, bool f = false, std::string fileNa
     return;
 }
 
-//TODO prints debug info depending on DEBUG set or not
-
 // visitor functions for different node types
 
 std::string visitref_obj(vpiHandle h) {
   std::string out = "";
-  //TODO version change!!
-  //if(const char *s = vpi_get_str(vpiFullName, h))
-  //  std::cout << "Name before everything: " << s << std::endl;
-  //else if(const char *s = vpi_get_str(vpiName, h))
-  //  std::cout << "Name before everything: " << s << std::endl;
-  //else 
-  //  std::cout << "No name\n";
-  //s_vpi_value value;
-  //vpi_get_value(h, &value);
-  //if(value.format)
-  //  std::cout << std::to_string(value.value.integer) << std::endl;
-  //else std::cout << "No value\n";
-  //if(vpiHandle par = vpi_handle(vpiParent, h))
-  //  if(const char *s = vpi_get_str(vpiName, par))
-  //    std::cout << "Parent name: " << s << std::endl;
-  //  else if(const char *s = vpi_get_str(vpiFullName, par))
-  //    std::cout << "Parent name: " << s << std::endl;
-  //else std::cout << "No parent\n";
   if(vpiHandle actual = vpi_handle(vpiActual, h)) {
     std::cout << "Actual type of ref_obj: " << 
       UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((const uhdm_handle *)actual)->type) << std::endl;
@@ -108,31 +80,6 @@ std::string visitref_obj(vpiHandle h) {
       case UHDM::uhdmparameter : 
         out = (visitLeaf(actual)).front();
         break;
-      //TODO redundant??
-      //{
-      //  std::cout << "Parameter\n";
-      //  s_vpi_value value;
-      //  vpi_get_value(actual, &value);
-      //  std::cout << "Value: " << std::to_string(value.value.integer) << std::endl;
-      //  if (const char* s = vpi_get_str(vpiFullName, actual)) {
-      //    std::cout << "FullName: " << s << std::endl;
-      //    out += value.format == 0
-      //      ? s : std::to_string(value.value.integer);
-      //  }
-      //  else if(const char *s = vpi_get_str(vpiName, actual)) {
-      //    std::cout << "Name: " << s << std::endl;
-      //    out += value.format == 0
-      //      ? s : std::to_string(value.value.integer);
-      //  }
-      //  else {
-      //    std::cout << "UNKNOWN value or name\n";
-      //    vpiHandle par = vpi_handle(vpiParent, actual);
-      //    if(const char *s = vpi_get_str(vpiName, par)) {
-      //      std::cout << "Parent: " << s << std::endl;
-      //    } else std::cout << "No parent\n";
-      //  }
-      //  break;
-      //}
       case UHDM::uhdmconstant:
       case UHDM::uhdmenum_const :
       default :
@@ -190,7 +137,6 @@ std::string visitbit_sel(vpiHandle h) {
   vpiHandle ind = vpi_handle(vpiIndex, h);
   if(ind) {
     std::list <std::string> current = visitLeaf(ind);
-    //assert(current.size() == 1);
     out += current.front();
   }
   else std::cout << "Index not resolved\n";
@@ -209,7 +155,6 @@ std::string visitindexed_part_sel(vpiHandle h) {
   if(vpiHandle b = vpi_handle(vpiBaseExpr, h)) {
     std::cout << "Base expression found\n";
     std::list <std::string> current = visitLeaf(b);
-    //assert(current.size() == 1);
     out += current.front();
     vpi_release_handle(b);
   }
@@ -217,7 +162,6 @@ std::string visitindexed_part_sel(vpiHandle h) {
   if(vpiHandle w = vpi_handle(vpiWidthExpr, h)) {
     std::cout << "Width expression found\n";
     std::list <std::string> current = visitLeaf(w);
-    //assert(current.size() == 1);
     out += current.front();
     vpi_release_handle(w);
   }
@@ -235,7 +179,6 @@ std::string visitpart_sel(vpiHandle h) {
   vpiHandle lrh = vpi_handle(vpiLeftRange, h);
   if(lrh) {
     std::list <std::string> current = visitLeaf(lrh);
-    //assert(current.size() == 1);
     out += current.front();
   }
   else std::cerr << "Left range not found; type: " <<
@@ -244,7 +187,6 @@ std::string visitpart_sel(vpiHandle h) {
   vpiHandle rrh = vpi_handle(vpiRightRange, h);
   if(rrh) {
     std::list <std::string> current = visitLeaf(rrh);
-    //assert(current.size() == 1);
     out += current.front();
   }
   else std::cerr << "Right range not found; type: " <<
@@ -290,14 +232,6 @@ std::list <std::string> visitLeaf(vpiHandle h) {
         out.push_back("0"); //TODO can do better
       } else std::cout << "Found param value: " << it->second << std::endl;
       out.push_back(std::to_string(it->second));
-      //if(!saveVariables) {
-      //  std::string tmp = vpi_get_str(vpiDecompile, h);
-      //  std::cout << "Parameter: " << tmp << std::endl;
-      //  out.push_back(tmp);
-      //} else {
-      //  std::cout << "Ignoring parameter at leaf\n";
-      //  out.push_back("");
-      //}
       break;
     }
     case UHDM::uhdmhier_path : { 
@@ -354,7 +288,6 @@ std::list <std::string> visitLeaf(vpiHandle h) {
   return out;
 }
 
-//FIXME bit_sel within structs needs special case; check if generalizable
 std::string visithier_path(vpiHandle soph) {
   std::string out = "";
   std::cout << "Walking hierarchical path\n";
@@ -391,11 +324,10 @@ std::string visithier_path(vpiHandle soph) {
   return out;
 }
 
-//TODO special case: when having an array of 8 bit values, a bit select should then give 8 bits as size!!
 int search_width(vpiHandle h) {
   switch(((const uhdm_handle *)h)->type) {
     case UHDM::uhdmbit_select: return 1;
-    case UHDM::uhdmpart_select: { //TODO what happens in higher dimension part-select?
+    case UHDM::uhdmpart_select: {
       int left=0, right=0;
       vpiHandle lrh = vpi_handle(vpiLeftRange, h);
       if(lrh) {
@@ -440,7 +372,6 @@ int search_width(vpiHandle h) {
 }
 
 
-//TODO -- add various other operations support
 std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
   vpiHandle ops = vpi_iterate(vpiOperand, h);
   std::list <std::string> current;
@@ -544,7 +475,6 @@ std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
               if(((const uhdm_handle *)actual)->type != UHDM::uhdmparameter &&
                   ((const uhdm_handle *)actual)->type != UHDM::uhdmconstant)
                 constantsOnly &= false;
-            //TODO sometimes constants are not recognized here; they somehow leak into search_width() -- check why!! 
             if(((const uhdm_handle *)oph)->type != UHDM::uhdmparameter &&
               ((const uhdm_handle *)oph)->type != UHDM::uhdmconstant) {
               constantsOnly &= false;
@@ -619,9 +549,6 @@ std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
       else if(type == 67) 
         out += " )";
 
-      //out += "/*";
-      //out += constantsOnly ? "IGNORE" : "";
-      //out += "*/";
       if(constantsOnly) 
         std::cout << "Operation is constants-only: " << out << std::endl;
       //if(!chooseVars) {
@@ -654,9 +581,6 @@ std::tuple <bool, std::list <std::string>> visitOperation(vpiHandle h) {
 }
 
 std::list <std::string> visitCond(vpiHandle h) {
-  //TODO
-  // when the condition is a ref_obj or a hier_path, expand it.
-  // When the condition is an operation, pass an int argument to expand operations
 
   std::cout << "Walking condition; type: " << 
     UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((const uhdm_handle *)h)->type) << std::endl;
@@ -669,14 +593,6 @@ std::list <std::string> visitCond(vpiHandle h) {
     case UHDM::uhdmexpr :
       std::cout << "Leafs found\n";
       current = visitLeaf(h);
-     // if(expand) {
-     //   std::list <vpiHandle> exp = handles.get(current);
-     //   std::cout << "Expanding " << current << std::endl;
-     //   bool k;
-     //   std::list <std::string> l;
-     //   std::tie(k, l) = visitOperation(exp.first()); //TODO add depth param
-     //   current = l.first();
-     // }
       break;
     case UHDM::uhdmhier_path :
       std::cout << "Struct found\n";
@@ -712,7 +628,6 @@ void visitIfElse(vpiHandle h) {
   std::list <std::string> tmp(out);
   ifs.insert(ifs.end(), out.begin(), out.end());
   all.insert(all.end(), tmp.begin(), tmp.end());
-  //TODO check if out remains after ifs is inserted
 
   if(vpiHandle s = vpi_handle(vpiStmt, h)) {
     std::cout << "Found statements\n";
@@ -731,7 +646,6 @@ void visitCase(vpiHandle h) {
   } else std::cout << "No condition found!\n";
   cases.insert(cases.end(), out.begin(), out.end());
   all.insert(all.end(), out.begin(), out.end());
-  //TODO check if out persists after cases insertion
   std::cout << "Parsing case item; type: " << 
     UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((const uhdm_handle *)h)->type) << std::endl;
   vpiHandle newh = vpi_iterate(vpiCaseItem, h);
@@ -749,48 +663,32 @@ void visitCase(vpiHandle h) {
 
 void visitAssignment(vpiHandle h) {
   std::cout << "Walking assignment\n";
-  vpiHandle rhs = vpi_handle(vpiRhs, h);
-  if(((uhdm_handle *)rhs)->type == UHDM::uhdmoperation) {
-    std::cout << "Operation found in RHS\n";
-    const int n = vpi_get(vpiOpType, rhs);
-    if (n == 32) {
-      visitTernary(rhs);
-    }
-    else {
-      if(vpiHandle operands = vpi_iterate(vpiOperand, rhs)) {
-        while(vpiHandle operand = vpi_scan(operands)) {
-          std::cout << "Operand type: "
-            << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((uhdm_handle *)operand)->type) << std::endl;
-          if(((uhdm_handle *)operand)->type == UHDM::uhdmoperation) {
-            std::cout << "\nOperand is operation; checking if ternary\n";
-            findTernaryInOperation(operand);
-            vpi_release_handle(operand);
-          }
-        }
-        vpi_release_handle(operands);
+  if(vpiHandle rhs = vpi_handle(vpiRhs, h)) {
+    if(((uhdm_handle *)rhs)->type == UHDM::uhdmoperation) {
+      std::cout << "Operation found in RHS\n";
+      const int n = vpi_get(vpiOpType, rhs);
+      if (n == 32) {
+        visitTernary(rhs);
       }
-    }
-
-    if(vpiHandle lhs = vpi_handle(vpiLhs, h)) {
-      //TODO save rhs to multimap, along with current condition
-      std::string l = vpi_get_str(vpiFullName, lhs);
-      // to start with, if there are multiple assignments 
-      // likely from always_comb blocks,
-      // we'll skip expanding it
-                                                                
-      // later, when stable, we can chime in conditions as well
-      bool k;
-      std::list<std::string> r;
-      std::tie(k, r) = visitOperation(rhs);
-      std::cout << "LHS: " << l << std::endl;
-      std::cout << "RHS: " << r.front() << std::endl;
-      //handles.insert({l, rhs});
-      //statements.insert({l, r.front()}); //no over-write
-    }
-
+      else {
+        if(vpiHandle operands = vpi_iterate(vpiOperand, rhs)) {
+          while(vpiHandle operand = vpi_scan(operands)) {
+            std::cout << "Operand type: "
+              << UHDM::UhdmName((UHDM::UHDM_OBJECT_TYPE)((uhdm_handle *)operand)->type) << std::endl;
+            if(((uhdm_handle *)operand)->type == UHDM::uhdmoperation) {
+              std::cout << "\nOperand is operation; checking if ternary\n";
+              findTernaryInOperation(operand);
+              vpi_release_handle(operand);
+            }
+          }
+          vpi_release_handle(operands);
+        }
+      }
+    } else
+      std::cout << "Not an operation on the RHS; ignoring\n";
+    vpi_release_handle(rhs);
   } else
-    std::cout << "Not an operation on the RHS; ignoring\n";
-  
+    std::cerr << "Assignment without RHS handle\n";
   return;
 }
 
@@ -958,7 +856,6 @@ int evalLeaf(vpiHandle h) {
       return evalOperation(h);
     default:
       std::cout << "Expression cannot be evaluated!!\n";
-      //TODO catch this!
       return 0;
   }
   return 0;
@@ -966,7 +863,6 @@ int evalLeaf(vpiHandle h) {
 
 int evalOperation(vpiHandle h) {
   //Some supported evaluatable operations we support
-  //TODO what about functions like clog2? Handled by preprocessor?
   int ops[2];
   int *op = ops;
   if(vpiHandle opi = vpi_iterate(vpiOperand, h)) {
@@ -985,7 +881,6 @@ int evalOperation(vpiHandle h) {
         default:
           std::cout << "Unable to evaluate operation\n";
           return 0;
-          //TODO catch this!
       }
     }
     vpi_release_handle(opi);
@@ -1046,7 +941,7 @@ void visitVariables(vpiHandle i) {
     std::string out = "";
     switch(((const uhdm_handle *)h)->type) {
       case UHDM::uhdmstruct_var :
-      case UHDM::uhdmstruct_net : {//TODO quote difference
+      case UHDM::uhdmstruct_net : {
         std::cout << "Finding width of struct\n";
         std::string base = vpi_get_str(vpiFullName, h);
         if(vpiHandle ts = vpi_handle(vpiTypespec, h)) {
@@ -1186,8 +1081,6 @@ void visitTopModules(vpiHandle ti) {
         std::cout << "****************************************\n";
         std::cout << "      ***  Now finding params        ***\n";
         std::cout << "****************************************\n";
-        //TODO for-loops, labelled begins, begins, genscopes, and other elements also have vpiParamAssigns!!
-        //TODO BSG_SAFE_CLOG2 and suchlike
         if(vpiHandle pi = vpi_iterate(vpiParamAssign, mh)) { //do vpiParameter
           std::cout << "Found params\n";
           visitParams(pi);
@@ -1217,7 +1110,6 @@ void visitTopModules(vpiHandle ti) {
         } else std::cout << "No nets found in current module\n";
 
         // ContAssigns:
-        //TODO struct assignment "bp_be/src/v/bp_be_calculator/bp_be_pipe_aux.sv" Ln 338
         std::cout << "****************************************\n";
         std::cout << "      *** Now finding cont. assigns  ***\n";
         std::cout << "****************************************\n";
@@ -1248,32 +1140,11 @@ void visitTopModules(vpiHandle ti) {
           vpi_release_handle(ai);
         } else std::cout << "No always blocks in current module\n";
 
-        //Upgrade control variables to expressions where possible when requested
-        /* TODO cv2ce: Control vars to expressions
-          Before, when dealing with ternary expressions in statements within a condition body,
-            we used to record only the ternary condition;
-            When decomposed into variables, they are repetitive and so, won't increase complexity by much
-          Now, we record both the enclosing condition (which is updated on encountering a nested expression)
-            and the ternary condition.
-          Also record LHS of all continuous assignments with the conditions they are nested within.
-          For all control signals recovered (without bit/part select)
-                in current module instance, 
-            - get continuous assignment definitions
-            - get continuous assignment definitions again, recurse
-            - stop if or when 
-              - depth = 5
-              - reach port def
-              - reach procedural assignment
-              
-        */
-
         //Accumulate variables:
         nets.insert(nets.end(), netsCurrent.begin(), netsCurrent.end());
         netsCurrent.clear();
         paramsAll.insert(params.begin(), params.end());
         params.clear();
-        //statements.clear();
-        //handles.clear();
 
         //Statistics:
         static int numTernaries, numIfs, numCases;
