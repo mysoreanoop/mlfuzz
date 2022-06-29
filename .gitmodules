@@ -1,6 +1,0 @@
-[submodule "black-parrot-sim"]
-	path = black-parrot-sim
-	url = git@github.com:black-parrot/black-parrot-sim.git
-[submodule "Surelog"]
-	path = Surelog
-	url = git@github.com:mysoreanoop/Surelog.git
