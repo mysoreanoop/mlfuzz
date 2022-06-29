@@ -4,12 +4,12 @@
 #include <tuple>
 #include <fstream>
 
-#include "surelog.h"
+#include <Surelog/surelog.h>
 
 // UHDM
 #include <uhdm/ElaboratorListener.h>
 #include <uhdm/uhdm.h>
-#include <uhdm/vpi_listener.h>
+#include <uhdm/VpiListener.h>
 
 // functions declarations
 std::string visitbit_sel(vpiHandle);
@@ -1235,7 +1235,8 @@ int main(int argc, const char** argv) {
   UHDM::Serializer serializer;
   UHDM::ElaboratorListener* listener =
     new UHDM::ElaboratorListener(&serializer, false);
-  listen_designs({the_design}, listener);
+  listener->listenDesigns({the_design});
+  delete listener;
   std::cout << "Listener in place\n";
 
   // Browse the UHDM Data Model using the IEEE VPI API.
